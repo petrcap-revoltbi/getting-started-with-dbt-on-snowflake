@@ -1,17 +1,16 @@
-name: Incoming PR
-run-name: PR opened by ${{ github.actor }}
+name: PR Accepted Deployment
+run-name: PR from ${{ github.actor }} accepted - triggered a ${{ github.event_name }}
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main]
+  push:
+    branches: [ main ]
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
-  run-snowflake-test-dbt-job:
-    name: "Run on Incoming PR"
+  run-snowflake-dbt-job:
+    name: "Run on Accepted PR"
     runs-on: ubuntu-latest
     environment: prod # Must match the OIDC subject's environment
     env:
@@ -23,7 +22,7 @@ jobs:
 
     steps:
       # Check out repository code
-      # Gets the latest code from the incoming pull request
+      # Gets the latest code from the pull request branch
       - name: Check out repository code
         uses: actions/checkout@v4
 
@@ -39,12 +38,13 @@ jobs:
       - run: snow connection test -x
 
       # You can remove the "--source" flag if your dbt_project.yml is at root of your repo
-      - name: Create a new tester dbt project object in ${{ vars.SNOWFLAKE_DATABASE }}.${{ vars.SNOWFLAKE_SCHEMA }}
-        run: snow dbt deploy tester_tasty_bytes_dbt_project_object_gh_action --source ./tasty_bytes --dbt-version 1.11.11 -x
+      # The --default-target flag ensures the dbt project object compiles and executes with your prod target
+      - name: Create a new dbt project object in ${{ vars.SNOWFLAKE_DATABASE }}.${{ vars.SNOWFLAKE_SCHEMA }}
+        run: snow dbt deploy tasty_bytes_dbt_object_gh_action --source ./tasty_bytes --default-target prod --dbt-version 1.11.11 -x
 
-      - name: List all of the snowflake dbt project objects in your account
+      - name: List all of the snowflake dbt project objects on your account
         run: snow dbt list -x
 
-      # Builds all models and runs tests in DAG order, failing early if any upstream test breaks
-      - name: Build and test dbt project in ${{ vars.SNOWFLAKE_DATABASE }}.${{ vars.SNOWFLAKE_SCHEMA }}
-        run: snow dbt execute -x tester_tasty_bytes_dbt_project_object_gh_action build --target dev
+      # (optional) Uncomment the lines below and follow Step 7 if you want to manage Task orchestration via source control
+      # - name: Run schedules.sql to create or alter tasks for tasty_bytes_dbt_object_gh_action
+      #   run: snow sql -f ${{ github.workspace }}/tasty_bytes/schedules.sql -x
